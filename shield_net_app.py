@@ -371,13 +371,12 @@ with demo_tab:
         objective_score = shortfall_cost + distance_cost
         if run_distance_weight != distance_weight:
             st.info("Distance penalty changed. Click Generate matches to refresh the allocation using the new weight.")
-        k1,k2,k3,k4,k5,k6 = st.columns(6)
+        k1,k2,k3,k4,k5 = st.columns(5)
         k1.metric("Requests", f"{len(demand)}")
         k2.metric("Units requested", f"{requested:,}")
         k3.metric("Units allocated", f"{allocated:,}")
         k4.metric("Unfilled demand", f"{unmatched:,}", f"{fill_rate:.1f}% covered")
         k5.metric("Avg. distance", f"{average_distance:.1f} km" if average_distance is not None else "N/A", help="Shipment-weighted average distance from matched suppliers to requesters.")
-        k6.metric("Weighted shortfall", f"{weighted_shortfall:,}", help="Unfilled units weighted by urgency: level 1 = 3, level 2 = 2, level 3 = 1.")
         st.caption(f"Greedy objective score: {objective_score:,.1f} = 100 x weighted shortfall ({shortfall_cost:,}) + distance weight {run_distance_weight:.1f} x unit-km ({unit_km:,.1f}). Lower is preferred by the heuristic.")
         st.markdown("#### Allocation plan by requester")
         st.caption("One row per requester. Supplier quantities and distances are written together so each recommendation is easy to trace.")
