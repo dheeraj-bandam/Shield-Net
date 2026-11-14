@@ -1,4 +1,4 @@
-﻿import streamlit as st
+import streamlit as st
 import pandas as pd
 from html import escape
 import math
@@ -114,7 +114,7 @@ def demo_matches(demand, supply, distance_weight=1.5):
     for req in requests:
         need = left_demand[str(req["Request ID"])]
         if need > 0:
-            rows.append({"Request ID":req["Request ID"], "Requester":req["Organization"], "Requester Location":req["Location"], "Supplier":"Unfilled demand", "Supplier Location":"-", "Product Type":req["Product Preference"], "Units":need, "Urgency":req["Urgency"], "Distance (km)":"-"})
+            rows.append({"Request ID":req["Request ID"], "Requester":req["Organization"], "Requester Location":req["Location"], "Supplier":"Unfilled demand", "Supplier Location":"-", "Product Type":req["Product Preference"], "Units":need, "Urgency":req["Urgency"], "Distance (km)":None})
     columns = ["Request ID", "Requester", "Requester Location", "Supplier", "Supplier Location", "Product Type", "Units", "Urgency", "Distance (km)"]
     return pd.DataFrame(rows, columns=columns)
 
@@ -436,18 +436,118 @@ with history_tab:
 
 with testing_tab:
     st.subheader("Sample test cases")
-    st.caption("Review these scenarios and expected outcomes. This page documents the test plan; it does not run automated tests.")
-    test_cases = pd.DataFrame([
-        {"Test ID":"TC01", "Scenario":"Supplier capacity is lower than total demand.", "Expected result":"Allocation must not exceed available supplier capacity."},
-        {"Test ID":"TC02", "Scenario":"Requester demand is lower than available supply.", "Expected result":"Allocation must not exceed requested quantity."},
-        {"Test ID":"TC03", "Scenario":"Supplier produces an incompatible product type.", "Expected result":"No allocation should be made between the incompatible pair."},
-        {"Test ID":"TC04", "Scenario":"Requester has high urgency.", "Expected result":"Weighted unmet demand should prioritize higher-urgency requests."},
-        {"Test ID":"TC05", "Scenario":"Two compatible suppliers are located at different distances.", "Expected result":"The distance component should favor closer allocations, subject to the overall objective."},
-        {"Test ID":"TC06", "Scenario":"Total available supply is insufficient.", "Expected result":"Remaining demand should be identified as shortfall."},
-        {"Test ID":"TC07", "Scenario":"Supplier capacity or requester demand is zero.", "Expected result":"No positive allocation should be generated for that capacity or demand."},
-        {"Test ID":"TC08", "Scenario":"Invalid or missing input data is entered.", "Expected result":"The system should flag the invalid input."},
-    ])
-    st.dataframe(test_cases, hide_index=True, use_container_width=True)
+    st.caption("Choose a case to generate its sample data and run it through the prototype's matching or input-validation logic.")
+
+    case_catalog = {
+        "TC01": ("Capacity below demand", "Supplier capacity is lower than total demand."),
+        "TC02": ("Demand below supply", "Requester demand is lower than available supply."),
+        "TC03": ("Incompatible product", "Supplier product type does not match the requester preference."),
+        "TC04": ("High urgency priority", "Two requests compete for supply; the level 1 request should be prioritized."),
+        "TC05": ("Distance preference", "Two compatible suppliers are at different distances."),
+        "TC06": ("Insufficient total supply", "Available supply cannot satisfy the full request."),
+        "TC07": ("Zero capacity and demand", "Boundary case with zero supplier capacity and a zero-quantity request."),
+        "TC08": ("Invalid input", "Supplier coordinates are invalid and should be flagged before matching."),
+    }
+    selected_case = st.selectbox(
+        "Select a sample case", list(case_catalog),
+        format_func=lambda case_id: f"{case_id} | {case_catalog[case_id][0]}",
+        key="test_case_selector",
+    )
+    st.markdown(f"**Scenario:** {case_catalog[selected_case][1]}")
+
+    def sample_request(request_id, name, quantity, urgency=2, product="Fully assembled", latitude=47.60, longitude=-122.33):
+        return {"Request ID":request_id, "Organization":name, "Location":"Sample location", "Latitude":latitude, "Longitude":longitude, "Demand Quantity":quantity, "Urgency":urgency, "Product Preference":product, "Organization Type":"Healthcare facility"}
+
+    def sample_supplier(supplier_id, name, capacity, product="Fully assembled", latitude=47.60, longitude=-122.33):
+        return {"Supplier ID":supplier_id, "Supplier":name, "Location":"Sample location", "Latitude":latitude, "Longitude":longitude, "Daily Capacity":capacity, "Product Type":product, "Contact Information":"demo@example.com"}
+
+    sample_demands = {
+        "TC01": [sample_request("R-01", "North Clinic", 10)],
+        "TC02": [sample_request("R-02", "Central Hospital", 4)],
+        "TC03": [sample_request("R-03", "Community Care", 6, product="Fully assembled")],
+        "TC04": [sample_request("R-04A", "Urgent Hospital", 5, urgency=1), sample_request("R-04B", "Routine Clinic", 5, urgency=3)],
+        "TC05": [sample_request("R-05", "Regional Clinic", 5)],
+        "TC06": [sample_request("R-06", "County Hospital", 12)],
+        "TC07": [sample_request("R-07A", "Zero Demand Clinic", 0), sample_request("R-07B", "Waiting Clinic", 3)],
+        "TC08": [sample_request("R-08", "Test Hospital", 5)],
+    }
+    sample_supplies = {
+        "TC01": [sample_supplier("S-01", "Small Supplier", 4)],
+        "TC02": [sample_supplier("S-02", "Large Supplier", 10)],
+        "TC03": [sample_supplier("S-03", "Kit Supplier", 10, product="Kit")],
+        "TC04": [sample_supplier("S-04", "Priority Supplier", 5)],
+        "TC05": [sample_supplier("S-05A", "Nearby Supplier", 5, latitude=47.605, longitude=-122.33), sample_supplier("S-05B", "Far Supplier", 5, latitude=48.10, longitude=-122.33)],
+        "TC06": [sample_supplier("S-06", "Limited Supplier", 5)],
+        "TC07": [sample_supplier("S-07", "Zero Capacity Supplier", 0)],
+        "TC08": [sample_supplier("S-08", "Invalid Coordinate Supplier", 5, latitude=123.0)],
+    }
+    sample_demand = pd.DataFrame(sample_demands[selected_case])
+    sample_supply = pd.DataFrame(sample_supplies[selected_case])
+    st.markdown("#### Sample inputs")
+    input_left, input_right = st.columns(2)
+    with input_left:
+        st.markdown("**Healthcare requests**")
+        st.dataframe(sample_demand, hide_index=True, width="stretch")
+    with input_right:
+        st.markdown("**Supplier capacity**")
+        st.dataframe(sample_supply, hide_index=True, width="stretch")
+
+    errors = validate_inputs(sample_demand, sample_supply)
+    case_result = None if errors else demo_matches(sample_demand, sample_supply, distance_weight=1.5)
+    allocated_result = case_result[case_result["Supplier"] != "Unfilled demand"] if case_result is not None else pd.DataFrame()
+    unfilled_result = case_result[case_result["Supplier"] == "Unfilled demand"] if case_result is not None else pd.DataFrame()
+    allocated_total = int(allocated_result["Units"].sum()) if not allocated_result.empty else 0
+    unfilled_total = int(unfilled_result["Units"].sum()) if not unfilled_result.empty else 0
+
+    passed = False
+    explanation = ""
+    if selected_case == "TC01":
+        capacity = int(sample_supply["Daily Capacity"].sum())
+        passed = allocated_total <= capacity and unfilled_total == 6
+        explanation = f"Allocated {allocated_total} of 10 units; the 4-unit supplier limit is respected and 6 units remain unfilled."
+    elif selected_case == "TC02":
+        demand_total = int(sample_demand["Demand Quantity"].sum())
+        passed = allocated_total <= demand_total and allocated_total == 4 and unfilled_total == 0
+        explanation = f"Allocated {allocated_total} of 4 requested units; allocation does not exceed demand."
+    elif selected_case == "TC03":
+        passed = allocated_result.empty and unfilled_total == 6
+        explanation = "The supplier offers kits while the requester needs fully assembled shields, so no compatible allocation is made."
+    elif selected_case == "TC04":
+        high_id, low_id = "R-04A", "R-04B"
+        high_units = int(allocated_result.loc[allocated_result["Request ID"] == high_id, "Units"].sum()) if not allocated_result.empty else 0
+        low_units = int(allocated_result.loc[allocated_result["Request ID"] == low_id, "Units"].sum()) if not allocated_result.empty else 0
+        passed = high_units == 5 and low_units == 0
+        explanation = f"Urgency 1 receives {high_units} units; urgency 3 receives {low_units} units from the limited supply."
+    elif selected_case == "TC05":
+        chosen = allocated_result["Supplier"].tolist() if not allocated_result.empty else []
+        passed = chosen == ["Nearby Supplier"]
+        explanation = "The nearby supplier is selected because the requests have equal urgency and its shipment distance is shorter."
+    elif selected_case == "TC06":
+        passed = allocated_total == 5 and unfilled_total == 7
+        explanation = f"Allocated {allocated_total} of 12 units; the remaining {unfilled_total} units are explicitly marked as unfilled demand."
+    elif selected_case == "TC07":
+        passed = allocated_total == 0 and unfilled_total == 3
+        explanation = "Zero capacity creates no shipment; the zero-quantity request needs none, and the 3-unit request remains unfilled."
+    elif selected_case == "TC08":
+        passed = bool(errors) and case_result is None
+        explanation = "Validation catches the supplier latitude outside the valid -90 to 90 degree range and prevents matching."
+
+    st.markdown("#### Run result")
+    if passed:
+        st.success(f"PASS - {explanation}")
+    else:
+        st.error(f"CHECK - {explanation or 'The sample did not meet the expected outcome.'}")
+    if errors:
+        st.markdown("**Validation messages**")
+        for error in errors:
+            st.write(f"- {error}")
+    else:
+        st.markdown("**Suggested allocation output**")
+        if case_result.empty:
+            st.info("No allocation rows were generated for this sample.")
+        else:
+            st.dataframe(case_result, hide_index=True, width="stretch")
+        st.caption(f"Summary: {allocated_total:,} units allocated; {unfilled_total:,} units unfilled.")
 
     st.subheader("Testing plan")
     testing_plan = pd.DataFrame([
@@ -458,7 +558,8 @@ with testing_tab:
         {"Testing type":"Output validation", "Purpose":"Ensure allocated quantities and shortfalls are consistent."},
         {"Testing type":"User interface testing", "Purpose":"Check dashboard readability and navigation."},
     ])
-    st.dataframe(testing_plan, hide_index=True, use_container_width=True)
+    st.dataframe(testing_plan, hide_index=True, width="stretch")
+
 st.divider()
 st.caption("SHIELD-NET | Streamlit prototype | Sample matching results are illustrative")
 
