@@ -294,7 +294,7 @@ if st.session_state.matches is None and not st.session_state.get("validation_err
     st.session_state.matches_distance_weight = distance_weight
 
 st.markdown('<div class="hero"><div class="kicker">PPE coordination dashboard / supply network</div><h1>Match face-shield supply to need</h1><p>Review requests and supplier capacity, then generate an illustrative allocation for coordinator review.</p></div>', unsafe_allow_html=True)
-demo_tab, history_tab = st.tabs(["Matching dashboard", "Historical case results"])
+demo_tab, history_tab, testing_tab = st.tabs(["Matching dashboard", "Historical case results", "Test cases"])
 
 with demo_tab:
     st.subheader(f"{scenario}: inputs")
