@@ -269,10 +269,7 @@ with st.sidebar:
     st.markdown("## Shield-Net")
     st.caption("Face-shield supply and demand matching")
     scenario = st.selectbox("Choose a sample case", ["Pacific Northwest", "Chicago region"])
-    distance_weight = st.slider(
-        "Distance penalty weight", min_value=0.0, max_value=5.0, value=1.5, step=0.1,
-        help="Controls the trade-off in the demo score: 100 x urgency-weighted shortfall + weight x unit-kilometres.",
-    )
+    distance_weight = 1.5  # Fixed default; slider removed for a simpler interface.
     st.caption("All organizations and sample quantities are illustrative.")
 
 required_demand_columns = {"Request ID", "Organization", "Location", "Latitude", "Longitude", "Demand Quantity", "Urgency", "Product Preference", "Organization Type"}
@@ -301,7 +298,7 @@ demo_tab, history_tab = st.tabs(["Matching dashboard", "Historical case results"
 
 with demo_tab:
     st.subheader(f"{scenario}: inputs")
-    st.caption("A sample plan is shown on load. Edit the tables or distance weight, then click Generate matches. Latitude and longitude provide point-to-point distances; sample coordinates are illustrative approximations.")
+    st.caption("A sample plan is shown on load. Edit the tables, then click Generate matches. Latitude and longitude provide point-to-point distances; sample coordinates are illustrative approximations.")
     demand_tab, supply_tab = st.tabs(["Healthcare requests", "Supplier capacity"])
     with demand_tab:
         st.markdown("#### Healthcare requests")
@@ -422,7 +419,7 @@ with demo_tab:
             st.markdown("**Supplier capacity review**")
             st.dataframe(supplier_utilization, hide_index=True, use_container_width=True, height=min(420, max(150, 36 * (len(supplier_utilization) + 2))))
 
-        st.markdown('<div class="note"><b>Decision logic:</b> the demo greedily assigns the compatible supplier-requester pair with the largest positive reduction in the combined score, using urgency weights and distance penalty. The slider lets you explore the shortfall-versus-distance trade-off. This is a heuristic demonstration, not the original Shield-Net optimization model.</div>', unsafe_allow_html=True)
+        st.markdown('<div class="note"><b>Decision logic:</b> the demo greedily assigns the compatible supplier-requester pair with the largest positive reduction in the combined score, using urgency weights and distance penalty. The distance penalty uses a fixed default weight of 1.5 to balance shortfall and shipment distance. This is a heuristic demonstration, not the original Shield-Net optimization model.</div>', unsafe_allow_html=True)
     else:
         st.info("Edit the inputs if you like, then select Generate illustrative matches to see the dashboard output.")
 
@@ -440,3 +437,4 @@ with history_tab:
 
 st.divider()
 st.caption("SHIELD-NET | Streamlit prototype | Sample matching results are illustrative")
+
