@@ -434,6 +434,31 @@ with history_tab:
     st.markdown("Source: Alcock, Rebecca, Justin J. Boutilier, and Auyon Siddiq. [Shield-Net: Matching Supply with Demand for Face Shields During the COVID-19 Pandemic](https://doi.org/10.1287/inte.2021.1112), *INFORMS Journal on Applied Analytics*, 52(6), 485-507 (2022).")
     st.caption("The historical totals are presented as reported case-study results. The prototype does not calculate them from historical transaction records.")
 
+with testing_tab:
+    st.subheader("Sample test cases")
+    st.caption("Review these scenarios and expected outcomes. This page documents the test plan; it does not run automated tests.")
+    test_cases = pd.DataFrame([
+        {"Test ID":"TC01", "Scenario":"Supplier capacity is lower than total demand.", "Expected result":"Allocation must not exceed available supplier capacity."},
+        {"Test ID":"TC02", "Scenario":"Requester demand is lower than available supply.", "Expected result":"Allocation must not exceed requested quantity."},
+        {"Test ID":"TC03", "Scenario":"Supplier produces an incompatible product type.", "Expected result":"No allocation should be made between the incompatible pair."},
+        {"Test ID":"TC04", "Scenario":"Requester has high urgency.", "Expected result":"Weighted unmet demand should prioritize higher-urgency requests."},
+        {"Test ID":"TC05", "Scenario":"Two compatible suppliers are located at different distances.", "Expected result":"The distance component should favor closer allocations, subject to the overall objective."},
+        {"Test ID":"TC06", "Scenario":"Total available supply is insufficient.", "Expected result":"Remaining demand should be identified as shortfall."},
+        {"Test ID":"TC07", "Scenario":"Supplier capacity or requester demand is zero.", "Expected result":"No positive allocation should be generated for that capacity or demand."},
+        {"Test ID":"TC08", "Scenario":"Invalid or missing input data is entered.", "Expected result":"The system should flag the invalid input."},
+    ])
+    st.dataframe(test_cases, hide_index=True, use_container_width=True)
+
+    st.subheader("Testing plan")
+    testing_plan = pd.DataFrame([
+        {"Testing type":"Input validation testing", "Purpose":"Verify supplier and requester data."},
+        {"Testing type":"Constraint testing", "Purpose":"Check capacity, demand and compatibility restrictions."},
+        {"Testing type":"Functional testing", "Purpose":"Verify that the system displays allocation outputs."},
+        {"Testing type":"Boundary testing", "Purpose":"Test zero capacity, zero demand and insufficient supply."},
+        {"Testing type":"Output validation", "Purpose":"Ensure allocated quantities and shortfalls are consistent."},
+        {"Testing type":"User interface testing", "Purpose":"Check dashboard readability and navigation."},
+    ])
+    st.dataframe(testing_plan, hide_index=True, use_container_width=True)
 st.divider()
 st.caption("SHIELD-NET | Streamlit prototype | Sample matching results are illustrative")
 
