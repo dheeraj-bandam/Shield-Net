@@ -2,6 +2,8 @@ import streamlit as st
 import pandas as pd
 from html import escape
 import math
+import time
+import pydeck as pdk
 
 st.set_page_config(page_title="Shield-Net | Matching Demo", page_icon="S", layout="wide")
 st.markdown("""
@@ -265,6 +267,103 @@ def build_flow_svg(flows):
     pieces.append('</svg>')
     return "".join(pieces), height
 
+def build_distribution_deck(demand, supply, result, animate=False):
+    """Create an interactive world basemap with supplier-requester allocation routes."""
+    matched = result[result["Supplier"] != "Unfilled demand"].copy()
+    if matched.empty:
+        return None
+
+    supplier_lookup = supply.set_index("Supplier").to_dict("index")
+    requester_lookup = demand.set_index("Organization").to_dict("index")
+    supplier_allocations = matched.groupby("Supplier")["Units"].sum().to_dict()
+    arcs, trips = [], []
+    for row in matched.to_dict("records"):
+        source = supplier_lookup[row["Supplier"]]
+        target = requester_lookup[row["Requester"]]
+        source_xy = [float(source["Longitude"]), float(source["Latitude"])]
+        target_xy = [float(target["Longitude"]), float(target["Latitude"])]
+        units = int(row["Units"])
+        arcs.append({
+            "source":source_xy, "target":target_xy, "supplier":row["Supplier"],
+            "requester":row["Requester"], "units":units,
+            "distance":float(row["Distance (km)"]),
+            "name":f"{row['Supplier']} to {row['Requester']}", "kind":"Suggested allocation",
+            "capacity":"", "allocated":"", "demand":"", "urgency":"",
+        })
+        # TripsLayer progressively reveals a route over a three-second cycle.
+        path = []
+        for step in range(13):
+            fraction = step / 12
+            path.append([
+                source_xy[0] + fraction * (target_xy[0] - source_xy[0]),
+                source_xy[1] + fraction * (target_xy[1] - source_xy[1]),
+                int(fraction * 3000),
+            ])
+        trips.append({"path":path, "supplier":row["Supplier"], "requester":row["Requester"], "units":units})
+
+    suppliers = [{
+        "name":row["Supplier"], "longitude":float(row["Longitude"]), "latitude":float(row["Latitude"]),
+        "capacity":int(row["Daily Capacity"]), "allocated":int(supplier_allocations.get(row["Supplier"], 0)),
+        "kind":"Supplier",
+    } for row in supply.to_dict("records")]
+    requesters = [{
+        "name":row["Organization"], "longitude":float(row["Longitude"]), "latitude":float(row["Latitude"]),
+        "demand":int(row["Demand Quantity"]), "urgency":int(row["Urgency"]), "kind":"Healthcare requester",
+        "capacity":"", "allocated":"", "supplier":"", "requester":"", "units":"", "distance":"",
+    } for row in demand.to_dict("records")]
+
+    all_points = suppliers + requesters
+    latitudes = [point["latitude"] for point in all_points]
+    longitudes = [point["longitude"] for point in all_points]
+    center_lat = sum(latitudes) / len(latitudes)
+    center_lon = sum(longitudes) / len(longitudes)
+    span = max(max(latitudes) - min(latitudes), (max(longitudes) - min(longitudes)) * max(0.2, math.cos(math.radians(center_lat))), 0.05)
+    zoom = max(1.5, min(10, math.log2(360 / span) - 2))
+
+    layers = [
+        pdk.Layer(
+            "ArcLayer", arcs, get_source_position="source", get_target_position="target",
+            get_source_color=[25, 135, 120, 185], get_target_color=[228, 157, 57, 220],
+            get_width=5, width_min_pixels=2, width_max_pixels=8,
+            opacity=0.24 if animate else 0.72, pickable=True, auto_highlight=True,
+        ),
+        pdk.Layer(
+            "ScatterplotLayer", suppliers, get_position="[longitude, latitude]",
+            get_fill_color=[22, 132, 115, 230], get_line_color=[255, 255, 255, 255],
+            get_radius=2800, radius_min_pixels=8, radius_max_pixels=16,
+            line_width_min_pixels=1, stroked=True, filled=True, pickable=True,
+        ),
+        pdk.Layer(
+            "ScatterplotLayer", requesters, get_position="[longitude, latitude]",
+            get_fill_color=[229, 158, 57, 230], get_line_color=[255, 255, 255, 255],
+            get_radius=2200, radius_min_pixels=7, radius_max_pixels=15,
+            line_width_min_pixels=1, stroked=True, filled=True, pickable=True,
+        ),
+    ]
+    if animate:
+        layers.append(pdk.Layer(
+            "TripsLayer", trips, get_path="path", get_color=[24, 116, 196, 235],
+            get_width=4, width_min_pixels=3, opacity=0.95,
+            current_time=int((time.monotonic() * 1000) % 3000), trail_length=3000,
+            fade_trail=False, cap_rounded=True, joint_rounded=True, pickable=True,
+        ))
+
+    tooltip = {
+        "html":"<b>{name}</b><br/>{kind}<br/>Supplier: {supplier}<br/>Requester: {requester}<br/>Suggested units: {units}<br/>Distance: {distance} km<br/>Capacity: {capacity}<br/>Allocated: {allocated}<br/>Demand: {demand}<br/>Urgency: {urgency}",
+        "style":{"backgroundColor":"#173142", "color":"white", "fontSize":"12px"},
+    }
+    deck = pdk.Deck(
+        layers=layers,
+        initial_view_state=pdk.ViewState(latitude=center_lat, longitude=center_lon, zoom=zoom, pitch=28, bearing=-8),
+        map_provider="carto",
+        map_style="https://basemaps.cartocdn.com/gl/positron-gl-style/style.json",
+        tooltip=tooltip,
+        height=560,
+        description="World map showing supplier and healthcare requester locations connected by suggested allocation routes.",
+    )
+    return deck
+
+
 with st.sidebar:
     st.markdown("## Shield-Net")
     st.caption("Face-shield supply and demand matching")
@@ -378,6 +477,25 @@ with demo_tab:
         k4.metric("Unfilled demand", f"{unmatched:,}", f"{fill_rate:.1f}% covered")
         k5.metric("Avg. distance", f"{average_distance:.1f} km" if average_distance is not None else "N/A", help="Shipment-weighted average distance from matched suppliers to requesters.")
         st.caption(f"Greedy objective score: {objective_score:,.1f} = 100 x weighted shortfall ({shortfall_cost:,}) + distance weight {run_distance_weight:.1f} x unit-km ({unit_km:,.1f}). Lower is preferred by the heuristic.")
+        st.markdown("#### Supplier-to-requester distribution map")
+        st.caption("World basemap centered on the displayed data. Green markers are suppliers, amber markers are healthcare requesters, and connecting lines show suggested allocations. Select a marker or line for details; zoom and pan to explore.")
+        animate_routes = st.toggle("Animate allocation routes", value=False, help="Progressively draw the suggested routes on the map.", key="animate_allocation_routes")
+
+        def render_distribution_map():
+            deck = build_distribution_deck(demand, supply, result, animate=animate_routes)
+            if deck is None:
+                st.info("There are no compatible allocations to display on the map.")
+            else:
+                st.pydeck_chart(deck, width="stretch", height=560, key="shield_net_distribution_map")
+
+        if animate_routes:
+            @st.fragment(run_every=0.2, key="shield_net_animated_distribution_map")
+            def render_animated_distribution_map():
+                render_distribution_map()
+            render_animated_distribution_map()
+        else:
+            render_distribution_map()
+
         st.markdown("#### Allocation plan by requester")
         st.caption("One row per requester. Supplier quantities and distances are written together so each recommendation is easy to trace.")
         allocation_plan_rows = []
